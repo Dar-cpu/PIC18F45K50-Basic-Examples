@@ -36,9 +36,9 @@ APP_SOURCES := \
 	$(APP_DIR)/teckio_boot_api.c \
 	$(USB_SOURCES)
 
-.PHONY: all bootloader application factory test clean
+.PHONY: all bootloader application update-test factory test clean
 
-all: factory
+all: factory update-test
 
 $(BUILD_DIR) $(DIST_DIR):
 	mkdir -p $@
@@ -56,6 +56,14 @@ $(DIST_DIR)/Aplicacion_TECKIO.hex: $(APP_SOURCES) | $(BUILD_DIR) $(DIST_DIR)
 	$(XC8) $(COMMON_FLAGS) -I$(APP_DIR) -mcodeoffset=0x2000 \
 		-mreserve=rom@7fc0:7fff \
 		-Wl,-Map=$(BUILD_DIR)/Aplicacion_TECKIO.map \
+		-o $@ $(APP_SOURCES)
+
+update-test: $(DIST_DIR)/Aplicacion_TECKIO_UpdateTest.hex
+
+$(DIST_DIR)/Aplicacion_TECKIO_UpdateTest.hex: $(APP_SOURCES) | $(BUILD_DIR) $(DIST_DIR)
+	$(XC8) $(COMMON_FLAGS) -DTECKIO_UPDATE_TEST=1 -I$(APP_DIR) -mcodeoffset=0x2000 \
+		-mreserve=rom@7fc0:7fff \
+		-Wl,-Map=$(BUILD_DIR)/Aplicacion_TECKIO_UpdateTest.map \
 		-o $@ $(APP_SOURCES)
 
 factory: $(DIST_DIR)/TECKIO_factory.hex
