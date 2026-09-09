@@ -110,7 +110,7 @@ void main(void)
     ANSELC = 0x00;
     ANSELD = 0x00;
     ANSELE = 0x00;
-    TRISEbits.TRISE3 = 1;
+    /* RE3 is input-only when MCLRE=OFF; it needs no TRIS bit write. */
 
     tkbl_init(&protocol, &protocol_ops);
     usb_init();

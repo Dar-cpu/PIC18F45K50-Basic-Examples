@@ -125,7 +125,7 @@ static uint8_t flush_row(void)
     return TKBL_OK;
 }
 
-static uint8_t eeprom_read(uint8_t address)
+static uint8_t tk_eeprom_read(uint8_t address)
 {
     EEADR = address;
     EECON1bits.EEPGD = 0;
@@ -134,7 +134,7 @@ static uint8_t eeprom_read(uint8_t address)
     return EEDATA;
 }
 
-static void eeprom_write(uint8_t address, uint8_t value)
+static void tk_eeprom_write(uint8_t address, uint8_t value)
 {
     EEADR = address;
     EEDATA = value;
@@ -148,10 +148,10 @@ static void eeprom_write(uint8_t address, uint8_t value)
 
 bool pic18_boot_request_take(void)
 {
-    if (eeprom_read(TKBL_EEPROM_REQUEST_ADDR) != TKBL_EEPROM_REQUEST_KEY) {
+    if (tk_eeprom_read(TKBL_EEPROM_REQUEST_ADDR) != TKBL_EEPROM_REQUEST_KEY) {
         return false;
     }
-    eeprom_write(TKBL_EEPROM_REQUEST_ADDR, 0xFFu);
+    tk_eeprom_write(TKBL_EEPROM_REQUEST_ADDR, 0xFFu);
     return true;
 }
 
