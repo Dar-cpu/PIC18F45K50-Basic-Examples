@@ -23,7 +23,7 @@ USB_SOURCES := \
 	$(USB_CORE)/usb.c \
 	$(USB_CORE)/usb_cdc_acm.c \
 	$(USB_CDC_SHARED)/usb_app.c \
-	$(USB_CDC_SHARED)/usb_descriptors.c
+	usb/teckio_descriptors.c
 
 BOOT_SOURCES := \
 	$(BOOT_DIR)/main.c \
