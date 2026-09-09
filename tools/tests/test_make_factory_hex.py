@@ -13,6 +13,8 @@ SPEC.loader.exec_module(factory_hex)
 class FactoryHexTests(unittest.TestCase):
     def test_round_trip_and_metadata(self):
         boot = {0x0000: 0xEF, 0x0001: 0x10, 0x300006: 0x64}
+        boot.update({8 + i: b for i, b in enumerate(bytes.fromhex("04EF10F0"))})
+        boot.update({24 + i: b for i, b in enumerate(bytes.fromhex("0CEF10F0"))})
         app = {0x2000: 0xEF, 0x2001: 0x20, 0x2010: 0x01}
         merged = factory_hex.build_factory(boot, app)
 
@@ -29,6 +31,12 @@ class FactoryHexTests(unittest.TestCase):
     def test_rejects_application_below_offset(self):
         with self.assertRaises(factory_hex.HexError):
             factory_hex.application_payload({0x0000: 0x00, 0x2000: 0x01})
+
+    def test_rejects_missing_interrupt_vectors(self):
+        app = {0x2000: 0x00}
+        image = factory_hex.build_factory({0: 0xEF, 0x300006: 0xA5}, app)
+        with self.assertRaises(factory_hex.HexError):
+            factory_hex.validate_factory(image, app)
 
     def test_rejects_bootloader_in_application_area(self):
         with self.assertRaises(factory_hex.HexError):

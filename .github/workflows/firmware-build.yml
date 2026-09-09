@@ -2,6 +2,7 @@ name: Build PIC18F45K50 firmware
 
 on:
   push:
+    branches: [main]
     paths:
       - "bootloader/**"
       - "application/**"

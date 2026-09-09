@@ -163,6 +163,10 @@ def build_factory(bootloader: dict[int, int], application: dict[int, int]) -> di
 
 
 def validate_factory(factory: dict[int, int], application: dict[int, int]) -> None:
+    for address, instruction in ((0x0008, bytes.fromhex("04EF10F0")),
+                                 (0x0018, bytes.fromhex("0CEF10F0"))):
+        if bytes(factory.get(address + i, 0xFF) for i in range(4)) != instruction:
+            raise HexError(f"missing/wrong interrupt forwarding at 0x{address:04X}")
     expected_metadata = metadata_row(application)
     actual_metadata = bytes(factory.get(METADATA_START + i, -1) for i in range(64))
     if actual_metadata != expected_metadata:
