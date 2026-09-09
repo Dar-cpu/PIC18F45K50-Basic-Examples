@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #define _XTAL_FREQ 48000000UL
+#define TKBL_ENTRY_WINDOW_MS 5000u
 
 #include "config.h"
 #include "pic18_flash.h"
@@ -42,7 +43,7 @@
 #pragma config XINST    = OFF
 
 /*
- * Accidental self-write protection.  The USB loader writes only Blocks 1-3.
+ * Accidental self-write protection. The USB loader writes only Blocks 1-3.
  * Code protection stays disabled so MPLAB can preserve and restore the loader.
  */
 #pragma config CP0      = OFF
@@ -67,8 +68,10 @@
 static volatile bool usb_tx_done = true;
 static volatile bool usb_rx_ready = false;
 static volatile bool reset_pending = false;
+static bool boot_session_active = false;
 
 static void clock_init(void);
+static void usb_boot_service(void);
 
 /* Forward the fixed PIC18 interrupt vectors to the offset application. */
 __asm("GLOBAL _teckio_high_vector");
@@ -85,14 +88,14 @@ void __at(0x0018) teckio_low_vector(void)
 
 void main(void)
 {
-    uint8_t packet_length;
+    bool force_boot;
+    bool app_valid;
+    uint16_t elapsed_ms;
 
     clock_init();
 
-    /* Normal boot is immediate; the application can request the loader in EEPROM. */
-    if (!pic18_boot_request_take() && pic18_application_is_valid()) {
-        pic18_jump_to_application();
-    }
+    force_boot = pic18_boot_request_take();
+    app_valid = pic18_application_is_valid();
 
     ANSELA = 0x00;
     ANSELB = 0x00;
@@ -109,24 +112,57 @@ void main(void)
     INTCONbits.PEIE = 0;
     USB_INTERRUPT_ENABLE = 0;
 
+    /*
+     * Recovery window:
+     * - If EEPROM requested the loader, stay here permanently.
+     * - If no valid application exists, stay here permanently.
+     * - Otherwise expose the CDC bootloader for 5 seconds after every reset.
+     *   If the PC sends any bootloader packet (normally HELLO), remain in the
+     *   loader. If there is no traffic, close USB and start the application.
+     *
+     * This makes even applications with no USB code recoverable over USB-C.
+     */
+    if (!force_boot && app_valid) {
+        for (elapsed_ms = 0u;
+             elapsed_ms < TKBL_ENTRY_WINDOW_MS && !boot_session_active;
+             ++elapsed_ms) {
+            usb_boot_service();
+            __delay_ms(1);
+        }
+
+        if (!boot_session_active) {
+            pic18_jump_to_application();
+        }
+    }
+
     while (1) {
-        usb_tasks();
-
-        if (usb_get_state() < STATE_CONFIGURED) {
-            continue;
-        }
-
-        if (usb_rx_ready) {
-            packet_length = g_cdc_num_data_out;
-            usb_rx_ready = false;
-            tkbl_feed(g_cdc_dat_ep_out, packet_length);
-            cdc_arm_data_ep_out();
-        }
+        usb_boot_service();
 
         if (reset_pending && usb_tx_done) {
             __delay_ms(20);
             RESET();
         }
+    }
+}
+
+static void usb_boot_service(void)
+{
+    uint8_t packet_length;
+
+    usb_tasks();
+
+    if (usb_get_state() < STATE_CONFIGURED) {
+        return;
+    }
+
+    if (usb_rx_ready) {
+        packet_length = g_cdc_num_data_out;
+        usb_rx_ready = false;
+
+        /* Any actual CDC OUT data means the host is trying to use the loader. */
+        boot_session_active = true;
+        tkbl_feed(g_cdc_dat_ep_out, packet_length);
+        cdc_arm_data_ep_out();
     }
 }
 
