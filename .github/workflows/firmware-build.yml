@@ -6,6 +6,7 @@ on:
     paths:
       - "bootloader/**"
       - "application/**"
+      - "usb/**"
       - "tools/**"
       - "Makefile"
       - ".github/workflows/firmware-build.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "bootloader/**"
       - "application/**"
+      - "usb/**"
       - "tools/**"
       - "Makefile"
       - ".github/workflows/firmware-build.yml"

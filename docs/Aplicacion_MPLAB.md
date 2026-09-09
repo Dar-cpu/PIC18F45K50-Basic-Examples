@@ -10,7 +10,8 @@ Para crear un proyecto gestionado por MPLAB X:
 2. Crea un Standalone Project, PIC18F45K50, XC8.
 3. Añade main.c y teckio_boot_api.c de application/Aplicacion_TECKIO.X.
 4. Añade usb.c y usb_cdc_acm.c de third_party/USB-Stack/USB_Stack/USB;
-   usb_app.c y usb_descriptors.c de Examples/CDC_Examples/Shared_Files.
+   usb_app.c de Examples/CDC_Examples/Shared_Files y usb/teckio_descriptors.c
+   de este repositorio. No agregues por separado usb_descriptors.c del submódulo.
 5. Include directories: application/Aplicacion_TECKIO.X, USB y Shared_Files.
 6. XC8 linker: Code Offset 0x2000 y ROM reservada 7FC0–7FFF. Comprueba los argumentos:
    `-mcodeoffset=0x2000 -mreserve=rom@7fc0:7fff`.
