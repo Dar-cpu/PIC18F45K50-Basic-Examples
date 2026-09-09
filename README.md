@@ -29,6 +29,7 @@ Se generan:
 - `dist/TECKIO_bootloader.hex`
 - `dist/Aplicacion_TECKIO.hex`
 - `dist/Aplicacion_TECKIO_ICSP.hex` (aplicación, marca válida y configuración; sin bootloader)
+- `dist/Aplicacion_TECKIO_UpdateTest.hex` (prueba USB: respuesta V2 y parpadeo de 200 ms)
 - `dist/TECKIO_factory.hex`
 
 El bootloader utiliza `0x0000-0x1FFF`; las aplicaciones se compilan con
@@ -45,3 +46,11 @@ no están versionados en Git. Compilación comprobada no equivale a prueba físi
 
 La pila USB se referencia como submódulo desde `johnnydrazzi/USB-Stack`, fijada
 a una revisión MIT. No se mantiene una copia duplicada dentro del proyecto.
+
+
+## Prueba visible de actualización USB
+
+Carga `Aplicacion_TECKIO_UpdateTest.hex` exclusivamente mediante el bootloader USB.
+Tras VERIFY y RESET, la placa conmuta los GPIO cada 200 ms. El comando `1` responde
+`TECKIO APP V2 OK`; `SYS.INFO?` informa `app=update-test version=2.0.0`.
+Esto distingue la imagen descargada del programa de fábrica, que usa 500 ms.

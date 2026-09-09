@@ -23,6 +23,18 @@
 #include "usb.h"
 #include "usb_cdc.h"
 
+#ifdef TECKIO_UPDATE_TEST
+#define TECKIO_BLINK_TICKS 20u
+#define TECKIO_RESPONSE "TECKIO APP V2 OK\r\n"
+#define TECKIO_INFO "OK board=TECKIO-PIC18F45K50 app=update-test version=2.0.0\r\n"
+#define TECKIO_STATUS "OK usb=ready test=gpio-blink-200ms\r\n"
+#else
+#define TECKIO_BLINK_TICKS 50u
+#define TECKIO_RESPONSE "TECKIO USB OK\r\n"
+#define TECKIO_INFO "OK board=TECKIO-PIC18F45K50 app=factory-test version=1.0.0\r\n"
+#define TECKIO_STATUS "OK usb=ready test=gpio-blink-500ms\r\n"
+#endif
+
 static volatile bool usb_tx_done = true;
 static volatile bool usb_rx_ready = false;
 static char command[64];
@@ -70,7 +82,7 @@ void main(void)
         }
 
         __delay_ms(10);
-        if (++blink_ticks >= 50u) {
+        if (++blink_ticks >= TECKIO_BLINK_TICKS) {
             blink_ticks = 0;
             pins_on = !pins_on;
             gpio_test_write(pins_on);
@@ -180,11 +192,11 @@ static void process_rx(void)
 static void execute_command(void)
 {
     if (strcmp(command, "1") == 0) {
-        usb_send_text("TECKIO USB OK\r\n");
+        usb_send_text(TECKIO_RESPONSE);
     } else if (strcmp(command, "SYS.INFO?") == 0) {
-        usb_send_text("OK board=TECKIO-PIC18F45K50 app=factory-test version=1.0.0\r\n");
+        usb_send_text(TECKIO_INFO);
     } else if (strcmp(command, "SYS.STATUS?") == 0) {
-        usb_send_text("OK usb=ready test=gpio-blink\r\n");
+        usb_send_text(TECKIO_STATUS);
     } else if (strcmp(command, "SYS.RESET") == 0) {
         usb_send_text("OK reset\r\n");
         __delay_ms(20);
