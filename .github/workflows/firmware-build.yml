@@ -35,6 +35,16 @@ jobs:
           compiler: xc8
           version: "3.10"
 
+      - name: Install PIC18F-K device pack
+        run: |
+          curl --fail --location \
+            --output "$RUNNER_TEMP/PIC18F-K_DFP.atpack" \
+            https://packs.download.microchip.com/Microchip.PIC18F-K_DFP.1.17.312.atpack
+          mkdir -p "$RUNNER_TEMP/PIC18F-K_DFP"
+          unzip -q "$RUNNER_TEMP/PIC18F-K_DFP.atpack" \
+            -d "$RUNNER_TEMP/PIC18F-K_DFP"
+          echo "DFP_DIR=$RUNNER_TEMP/PIC18F-K_DFP/xc8" >> "$GITHUB_ENV"
+
       - name: Unit tests
         run: make test
 

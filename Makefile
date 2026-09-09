@@ -1,5 +1,6 @@
 XC8 ?= xc8-cc
 PYTHON ?= python3
+DFP_DIR ?=
 
 MCU := 18F45K50
 BUILD_DIR := build
@@ -12,6 +13,10 @@ USB_CDC_SHARED := $(USB_ROOT)/Examples/CDC_Examples/Shared_Files
 
 COMMON_FLAGS := -mcpu=$(MCU) -std=c99 -O1 -mwarn=-3 -DXPRJ_default=default \
 	-I$(USB_CORE) -I$(USB_CDC_SHARED)
+
+ifneq ($(strip $(DFP_DIR)),)
+COMMON_FLAGS += -mdfp=$(DFP_DIR)
+endif
 
 USB_SOURCES := \
 	$(USB_CORE)/usb.c \
