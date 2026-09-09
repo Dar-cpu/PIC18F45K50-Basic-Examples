@@ -46,37 +46,38 @@ static uint8_t make_frame(uint8_t *out, uint8_t command, uint16_t sequence,
     return (uint8_t)(12 + payload_length);
 }
 
-static uint8_t mock_begin(uint32_t start, uint32_t end, uint32_t count, uint32_t crc)
+uint8_t tkbl_platform_begin(void)
 {
-    (void)start; (void)end; (void)count; (void)crc;
     ++begin_calls;
     return TKBL_OK;
 }
 
-static uint8_t mock_write(uint32_t address, const uint8_t *data, uint8_t length)
+uint8_t tkbl_platform_write(uint16_t address, const uint8_t *data,
+                            uint8_t length)
 {
     (void)address; (void)data; (void)length;
     ++write_calls;
     return TKBL_OK;
 }
 
-static uint8_t mock_finish(void)
+uint8_t tkbl_platform_finish(void)
 {
     ++finish_calls;
     return TKBL_OK;
 }
 
-static uint8_t mock_verify(uint32_t start, uint32_t end, uint32_t count, uint32_t crc)
+uint8_t tkbl_platform_commit(uint16_t start, uint16_t end, uint16_t count,
+                             uint32_t crc)
 {
     (void)start; (void)end; (void)count; (void)crc;
     ++verify_calls;
     return TKBL_OK;
 }
 
-static void mock_abort(void) {}
-static void mock_reset(void) { reset_requested = true; }
+void tkbl_platform_abort(void) {}
+void tkbl_platform_reset(void) { reset_requested = true; }
 
-static void mock_send(const uint8_t *data, uint8_t length)
+void tkbl_platform_send(const uint8_t *data, uint8_t length)
 {
     memcpy(reply, data, length);
     reply_length = length;
@@ -84,23 +85,18 @@ static void mock_send(const uint8_t *data, uint8_t length)
 
 int main(void)
 {
-    static const tkbl_ops_t ops = {
-        mock_begin, mock_write, mock_finish, mock_verify,
-        mock_abort, mock_reset, mock_send
-    };
-    tkbl_context_t ctx;
     uint8_t frame[96];
     uint8_t payload[32];
     uint8_t image[] = {1, 2, 3, 4, 5, 6};
     uint8_t length;
     uint32_t image_crc;
 
-    tkbl_init(&ctx, &ops);
+    tkbl_init();
     assert((tkbl_crc32_update(0xFFFFFFFFUL, (const uint8_t *)"123456789", 9)
             ^ 0xFFFFFFFFUL) == 0xCBF43926UL);
 
     length = make_frame(frame, TKBL_CMD_HELLO, 1, NULL, 0);
-    tkbl_feed(&ctx, frame, length);
+    tkbl_feed(frame, length);
     assert(reply_length == 16 && reply[3] == TKBL_CMD_ACK);
     assert(reply[8] == TKBL_CMD_HELLO && reply[10] == 64 && reply[11] == 0);
 
@@ -110,32 +106,32 @@ int main(void)
     put_u32(&payload[8], sizeof(image));
     put_u32(&payload[12], image_crc);
     length = make_frame(frame, TKBL_CMD_BEGIN, 2, payload, 16);
-    tkbl_feed(&ctx, frame, 3);
-    tkbl_feed(&ctx, &frame[3], (uint8_t)(length - 3));
+    tkbl_feed(frame, 3);
+    tkbl_feed(&frame[3], (uint8_t)(length - 3));
     assert(begin_calls == 1 && reply[3] == TKBL_CMD_ACK);
 
     put_u32(payload, TKBL_APP_START);
     memcpy(&payload[4], image, sizeof(image));
     length = make_frame(frame, TKBL_CMD_DATA, 3, payload, 4 + sizeof(image));
-    tkbl_feed(&ctx, frame, 8);
-    tkbl_feed(&ctx, &frame[8], (uint8_t)(length - 8));
+    tkbl_feed(frame, 8);
+    tkbl_feed(&frame[8], (uint8_t)(length - 8));
     assert(write_calls == 1 && reply[3] == TKBL_CMD_ACK);
 
     /* Same sequence is a retry: reply again, but do not write Flash twice. */
-    tkbl_feed(&ctx, frame, length);
+    tkbl_feed(frame, length);
     assert(write_calls == 1 && reply[3] == TKBL_CMD_ACK);
 
     put_u32(payload, image_crc);
     length = make_frame(frame, TKBL_CMD_END, 4, payload, 4);
-    tkbl_feed(&ctx, frame, length);
+    tkbl_feed(frame, length);
     assert(finish_calls == 1 && reply[3] == TKBL_CMD_ACK);
 
     length = make_frame(frame, TKBL_CMD_VERIFY, 5, NULL, 0);
-    tkbl_feed(&ctx, frame, length);
+    tkbl_feed(frame, length);
     assert(verify_calls == 1 && reply[3] == TKBL_CMD_ACK);
 
     length = make_frame(frame, TKBL_CMD_RESET, 6, NULL, 0);
-    tkbl_feed(&ctx, frame, length);
+    tkbl_feed(frame, length);
     assert(reset_requested && reply[3] == TKBL_CMD_ACK);
 
     puts("TECKIO protocol tests: OK");

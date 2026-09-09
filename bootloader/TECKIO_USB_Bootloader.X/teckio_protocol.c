@@ -1,30 +1,51 @@
 #include "teckio_protocol.h"
 
-#include <string.h>
+#include <stdbool.h>
 
 #define TKBL_SOF0 0x54u
 #define TKBL_SOF1 0x4Bu
 
-static uint16_t get_u16_le(const uint8_t *p)
+enum update_state {
+    UPDATE_IDLE,
+    UPDATE_RECEIVING,
+    UPDATE_ENDED,
+    UPDATE_VERIFIED
+};
+
+static uint8_t frame[TKBL_MAX_FRAME];
+static uint8_t frame_length;
+static uint8_t expected_length;
+static uint8_t last_reply[16];
+static uint8_t last_reply_length;
+static uint8_t last_command;
+static uint16_t last_sequence;
+static bool last_reply_valid;
+static uint8_t update_state;
+static uint16_t image_end;
+static uint16_t expected_count;
+static uint16_t received_count;
+static uint16_t next_min_address;
+static uint32_t expected_crc;
+static uint32_t running_crc;
+
+static uint16_t get_u16(const uint8_t *p)
 {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-static uint32_t get_u32_le(const uint8_t *p)
+static uint32_t get_u32(const uint8_t *p)
 {
-    return (uint32_t)p[0]
-         | ((uint32_t)p[1] << 8)
-         | ((uint32_t)p[2] << 16)
-         | ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8)
+         | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-static void put_u16_le(uint8_t *p, uint16_t value)
+static void put_u16(uint8_t *p, uint16_t value)
 {
     p[0] = (uint8_t)value;
     p[1] = (uint8_t)(value >> 8);
 }
 
-static void put_u32_le(uint8_t *p, uint32_t value)
+static void put_u32(uint8_t *p, uint32_t value)
 {
     p[0] = (uint8_t)value;
     p[1] = (uint8_t)(value >> 8);
@@ -34,307 +55,222 @@ static void put_u32_le(uint8_t *p, uint32_t value)
 
 uint32_t tkbl_crc32_update(uint32_t crc, const uint8_t *data, uint8_t length)
 {
-    uint8_t i;
     uint8_t bit;
-
-    for (i = 0; i < length; ++i) {
-        crc ^= data[i];
+    while (length-- != 0u) {
+        crc ^= *data++;
         for (bit = 0; bit < 8u; ++bit) {
-            if (crc & 1UL) {
-                crc = (crc >> 1) ^ 0xEDB88320UL;
-            } else {
-                crc >>= 1;
-            }
+            crc = (crc >> 1) ^ ((crc & 1UL) ? 0xEDB88320UL : 0UL);
         }
     }
     return crc;
 }
 
-static void send_reply(tkbl_context_t *ctx, uint8_t reply_command,
-                       uint8_t original_command, uint8_t status,
-                       uint16_t sequence, bool include_chunk)
+static void reply(uint8_t command, uint8_t status, uint16_t sequence)
 {
-    uint8_t *out = ctx->last_reply;
-    uint16_t payload_length = include_chunk ? 4u : 2u;
+    uint8_t payload_length = 2u;
     uint32_t crc;
 
-    out[0] = TKBL_SOF0;
-    out[1] = TKBL_SOF1;
-    out[2] = TKBL_PROTOCOL_VERSION;
-    out[3] = reply_command;
-    put_u16_le(&out[4], sequence);
-    put_u16_le(&out[6], payload_length);
-    out[8] = original_command;
-    out[9] = status;
-    if (include_chunk) {
-        put_u16_le(&out[10], TKBL_MAX_DATA_CHUNK);
+    last_reply[0] = TKBL_SOF0;
+    last_reply[1] = TKBL_SOF1;
+    last_reply[2] = TKBL_PROTOCOL_VERSION;
+    last_reply[3] = status == TKBL_OK ? TKBL_CMD_ACK : TKBL_CMD_NACK;
+    put_u16(&last_reply[4], sequence);
+    if (command == TKBL_CMD_HELLO && status == TKBL_OK) {
+        payload_length = 4u;
+        put_u16(&last_reply[10], TKBL_MAX_DATA_CHUNK);
     }
+    put_u16(&last_reply[6], payload_length);
+    last_reply[8] = command;
+    last_reply[9] = status;
+    crc = tkbl_crc32_update(0xFFFFFFFFUL, &last_reply[2],
+                            (uint8_t)(6u + payload_length));
+    put_u32(&last_reply[8u + payload_length], crc ^ 0xFFFFFFFFUL);
 
-    crc = tkbl_crc32_update(0xFFFFFFFFUL, &out[2], (uint8_t)(6u + payload_length));
-    crc ^= 0xFFFFFFFFUL;
-    put_u32_le(&out[8u + payload_length], crc);
-
-    ctx->last_reply_length = (uint8_t)(12u + payload_length);
-    ctx->last_sequence = sequence;
-    ctx->last_command = original_command;
-    ctx->last_reply_valid = true;
-    ctx->ops->send(out, ctx->last_reply_length);
+    last_reply_length = (uint8_t)(12u + payload_length);
+    last_command = command;
+    last_sequence = sequence;
+    last_reply_valid = true;
+    tkbl_platform_send(last_reply, last_reply_length);
 }
 
-static void nack(tkbl_context_t *ctx, uint8_t command, uint8_t status,
-                 uint16_t sequence)
+static bool upper_word_is_zero(const uint8_t *p)
 {
-    send_reply(ctx, TKBL_CMD_NACK, command, status, sequence, false);
+    return p[2] == 0u && p[3] == 0u;
 }
 
-static void ack(tkbl_context_t *ctx, uint8_t command, uint16_t sequence,
-                bool include_chunk)
+static void process_frame(void)
 {
-    send_reply(ctx, TKBL_CMD_ACK, command, TKBL_OK, sequence, include_chunk);
-}
-
-static bool valid_range(uint32_t start, uint32_t end, uint32_t count)
-{
-    if (start != TKBL_APP_START || end > TKBL_APP_END || start >= end) {
-        return false;
-    }
-    if (count == 0UL || count > (end - start)) {
-        return false;
-    }
-    return true;
-}
-
-static void process_frame(tkbl_context_t *ctx)
-{
-    const uint8_t *frame = ctx->frame;
-    const uint8_t *payload = &frame[8];
+    uint8_t *payload = &frame[8];
     uint8_t command = frame[3];
-    uint16_t sequence = get_u16_le(&frame[4]);
-    uint16_t payload_length = get_u16_le(&frame[6]);
-    uint32_t received_crc = get_u32_le(&frame[8u + payload_length]);
-    uint32_t calculated_crc;
-    uint8_t status;
+    uint8_t payload_length = frame[6];
+    uint16_t sequence = get_u16(&frame[4]);
+    uint8_t status = TKBL_OK;
 
-    calculated_crc = tkbl_crc32_update(0xFFFFFFFFUL, &frame[2],
-                                       (uint8_t)(6u + payload_length));
-    calculated_crc ^= 0xFFFFFFFFUL;
-    if (calculated_crc != received_crc) {
-        nack(ctx, command, TKBL_ERR_CRC, sequence);
-        /* A transport-corrupted retry with the same sequence must be accepted. */
-        ctx->last_reply_valid = false;
+    if ((tkbl_crc32_update(0xFFFFFFFFUL, &frame[2],
+            (uint8_t)(6u + payload_length)) ^ 0xFFFFFFFFUL)
+            != get_u32(&frame[8u + payload_length])) {
+        reply(command, TKBL_ERR_CRC, sequence);
+        last_reply_valid = false;
         return;
     }
     if (frame[2] != TKBL_PROTOCOL_VERSION) {
-        nack(ctx, command, TKBL_ERR_COMMAND, sequence);
+        reply(command, TKBL_ERR_COMMAND, sequence);
+        return;
+    }
+    if (last_reply_valid && command == last_command
+        && sequence == last_sequence) {
+        tkbl_platform_send(last_reply, last_reply_length);
         return;
     }
 
-    /* Android retries the same sequence after a timeout. Never write twice. */
-    if (ctx->last_reply_valid && sequence == ctx->last_sequence
-        && command == ctx->last_command) {
-        ctx->ops->send(ctx->last_reply, ctx->last_reply_length);
-        return;
-    }
-
-    switch (command) {
-    case TKBL_CMD_HELLO:
-        if (payload_length != 0u) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-        } else {
-            ack(ctx, command, sequence, true);
-        }
-        break;
-
-    case TKBL_CMD_BEGIN:
+    if (command == TKBL_CMD_HELLO) {
+        status = payload_length == 0u ? TKBL_OK : TKBL_ERR_LENGTH;
+    } else if (command == TKBL_CMD_BEGIN) {
+        uint16_t start;
+        uint16_t count;
         if (payload_length != 16u) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-            break;
-        }
-        ctx->start = get_u32_le(&payload[0]);
-        ctx->end = get_u32_le(&payload[4]);
-        ctx->expected_count = get_u32_le(&payload[8]);
-        ctx->expected_crc = get_u32_le(&payload[12]);
-        if (!valid_range(ctx->start, ctx->end, ctx->expected_count)) {
-            nack(ctx, command, TKBL_ERR_ADDRESS, sequence);
-            break;
-        }
-        status = ctx->ops->begin(ctx->start, ctx->end, ctx->expected_count,
-                                 ctx->expected_crc);
-        if (status != TKBL_OK) {
-            nack(ctx, command, status, sequence);
-            break;
-        }
-        ctx->update_started = true;
-        ctx->update_ended = false;
-        ctx->update_verified = false;
-        ctx->received_count = 0;
-        ctx->running_crc = 0xFFFFFFFFUL;
-        ctx->next_min_address = ctx->start;
-        ack(ctx, command, sequence, false);
-        break;
-
-    case TKBL_CMD_DATA: {
-        uint32_t address;
-        uint8_t data_length;
-        if (payload_length < 5u || payload_length > (4u + TKBL_MAX_DATA_CHUNK)) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-            break;
-        }
-        if (!ctx->update_started || ctx->update_ended) {
-            nack(ctx, command, TKBL_ERR_STATE, sequence);
-            break;
-        }
-        address = get_u32_le(payload);
-        data_length = (uint8_t)(payload_length - 4u);
-        if (address < ctx->start || address < ctx->next_min_address
-            || address >= ctx->end
-            || (uint32_t)data_length > (ctx->end - address)) {
-            nack(ctx, command, TKBL_ERR_ADDRESS, sequence);
-            break;
-        }
-        if ((uint32_t)data_length > (ctx->expected_count - ctx->received_count)) {
-            nack(ctx, command, TKBL_ERR_IMAGE_SIZE, sequence);
-            break;
-        }
-        status = ctx->ops->write(address, &payload[4], data_length);
-        if (status != TKBL_OK) {
-            nack(ctx, command, status, sequence);
-            break;
-        }
-        ctx->running_crc = tkbl_crc32_update(ctx->running_crc, &payload[4],
-                                             data_length);
-        ctx->received_count += data_length;
-        ctx->next_min_address = address + data_length;
-        ack(ctx, command, sequence, false);
-        break;
-    }
-
-    case TKBL_CMD_END:
-        if (payload_length != 4u) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-            break;
-        }
-        if (!ctx->update_started || ctx->update_ended) {
-            nack(ctx, command, TKBL_ERR_STATE, sequence);
-            break;
-        }
-        if (get_u32_le(payload) != ctx->expected_crc
-            || ctx->received_count != ctx->expected_count
-            || (ctx->running_crc ^ 0xFFFFFFFFUL) != ctx->expected_crc) {
-            nack(ctx, command, TKBL_ERR_CRC, sequence);
-            break;
-        }
-        status = ctx->ops->finish();
-        if (status != TKBL_OK) {
-            nack(ctx, command, status, sequence);
-            break;
-        }
-        ctx->update_ended = true;
-        ack(ctx, command, sequence, false);
-        break;
-
-    case TKBL_CMD_VERIFY:
-        if (payload_length != 0u) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-            break;
-        }
-        if (!ctx->update_started || !ctx->update_ended || ctx->update_verified) {
-            nack(ctx, command, TKBL_ERR_STATE, sequence);
-            break;
-        }
-        status = ctx->ops->verify(ctx->start, ctx->end, ctx->expected_count,
-                                  ctx->expected_crc);
-        if (status != TKBL_OK) {
-            nack(ctx, command, status, sequence);
-            break;
-        }
-        ctx->update_verified = true;
-        ack(ctx, command, sequence, false);
-        break;
-
-    case TKBL_CMD_RESET:
-        if (payload_length != 0u) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-            break;
-        }
-        if (!ctx->update_verified) {
-            nack(ctx, command, TKBL_ERR_STATE, sequence);
-            break;
-        }
-        ack(ctx, command, sequence, false);
-        ctx->ops->request_reset();
-        break;
-
-    case TKBL_CMD_ABORT:
-        if (payload_length != 0u) {
-            nack(ctx, command, TKBL_ERR_LENGTH, sequence);
-            break;
-        }
-        ctx->ops->abort();
-        ctx->update_started = false;
-        ctx->update_ended = false;
-        ctx->update_verified = false;
-        ack(ctx, command, sequence, false);
-        break;
-
-    default:
-        nack(ctx, command, TKBL_ERR_COMMAND, sequence);
-        break;
-    }
-}
-
-void tkbl_init(tkbl_context_t *ctx, const tkbl_ops_t *ops)
-{
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->ops = ops;
-}
-
-static void parser_reset(tkbl_context_t *ctx)
-{
-    ctx->frame_length = 0;
-    ctx->expected_length = 0;
-}
-
-void tkbl_feed(tkbl_context_t *ctx, const uint8_t *data, uint8_t length)
-{
-    uint8_t i;
-
-    for (i = 0; i < length; ++i) {
-        uint8_t byte = data[i];
-
-        if (ctx->frame_length == 0u) {
-            if (byte == TKBL_SOF0) {
-                ctx->frame[ctx->frame_length++] = byte;
-            }
-            continue;
-        }
-        if (ctx->frame_length == 1u) {
-            if (byte == TKBL_SOF1) {
-                ctx->frame[ctx->frame_length++] = byte;
-            } else if (byte == TKBL_SOF0) {
-                ctx->frame[0] = byte;
+            status = TKBL_ERR_LENGTH;
+        } else if (!upper_word_is_zero(&payload[0])
+                   || !upper_word_is_zero(&payload[4])
+                   || !upper_word_is_zero(&payload[8])) {
+            status = TKBL_ERR_ADDRESS;
+        } else {
+            start = get_u16(&payload[0]);
+            image_end = get_u16(&payload[4]);
+            count = get_u16(&payload[8]);
+            expected_crc = get_u32(&payload[12]);
+            if (start != TKBL_APP_START || image_end > TKBL_APP_END
+                || image_end <= start || count == 0u
+                || count > (uint16_t)(image_end - start)) {
+                status = TKBL_ERR_ADDRESS;
             } else {
-                parser_reset(ctx);
+                status = tkbl_platform_begin();
+                if (status == TKBL_OK) {
+                    expected_count = count;
+                    received_count = 0u;
+                    next_min_address = TKBL_APP_START;
+                    running_crc = 0xFFFFFFFFUL;
+                    update_state = UPDATE_RECEIVING;
+                }
             }
-            continue;
         }
+    } else if (command == TKBL_CMD_DATA) {
+        uint16_t address;
+        uint8_t data_length;
+        if (payload_length < 5u || payload_length > TKBL_MAX_PAYLOAD) {
+            status = TKBL_ERR_LENGTH;
+        } else if (update_state != UPDATE_RECEIVING) {
+            status = TKBL_ERR_STATE;
+        } else if (!upper_word_is_zero(payload)) {
+            status = TKBL_ERR_ADDRESS;
+        } else {
+            address = get_u16(payload);
+            data_length = (uint8_t)(payload_length - 4u);
+            if (address < next_min_address || address < TKBL_APP_START
+                || address >= image_end
+                || data_length > (uint16_t)(image_end - address)) {
+                status = TKBL_ERR_ADDRESS;
+            } else if (data_length > (uint16_t)(expected_count - received_count)) {
+                status = TKBL_ERR_IMAGE_SIZE;
+            } else {
+                status = tkbl_platform_write(address, &payload[4], data_length);
+                if (status == TKBL_OK) {
+                    running_crc = tkbl_crc32_update(running_crc, &payload[4],
+                                                    data_length);
+                    received_count += data_length;
+                    next_min_address = address + data_length;
+                }
+            }
+        }
+    } else if (command == TKBL_CMD_END) {
+        if (payload_length != 4u) {
+            status = TKBL_ERR_LENGTH;
+        } else if (update_state != UPDATE_RECEIVING) {
+            status = TKBL_ERR_STATE;
+        } else if (get_u32(payload) != expected_crc
+                   || received_count != expected_count
+                   || (running_crc ^ 0xFFFFFFFFUL) != expected_crc) {
+            status = TKBL_ERR_CRC;
+        } else {
+            status = tkbl_platform_finish();
+            if (status == TKBL_OK) {
+                update_state = UPDATE_ENDED;
+            }
+        }
+    } else if (command == TKBL_CMD_VERIFY) {
+        if (payload_length != 0u) {
+            status = TKBL_ERR_LENGTH;
+        } else if (update_state != UPDATE_ENDED) {
+            status = TKBL_ERR_STATE;
+        } else {
+            status = tkbl_platform_commit(TKBL_APP_START, image_end,
+                                          expected_count, expected_crc);
+            if (status == TKBL_OK) {
+                update_state = UPDATE_VERIFIED;
+            }
+        }
+    } else if (command == TKBL_CMD_RESET) {
+        if (payload_length != 0u) {
+            status = TKBL_ERR_LENGTH;
+        } else if (update_state != UPDATE_VERIFIED) {
+            status = TKBL_ERR_STATE;
+        }
+    } else if (command == TKBL_CMD_ABORT) {
+        if (payload_length != 0u) {
+            status = TKBL_ERR_LENGTH;
+        } else {
+            tkbl_platform_abort();
+            update_state = UPDATE_IDLE;
+        }
+    } else {
+        status = TKBL_ERR_COMMAND;
+    }
 
-        ctx->frame[ctx->frame_length++] = byte;
-        if (ctx->frame_length == 8u) {
-            uint16_t payload_length = get_u16_le(&ctx->frame[6]);
-            if (payload_length > TKBL_MAX_PAYLOAD) {
-                nack(ctx, ctx->frame[3], TKBL_ERR_LENGTH,
-                     get_u16_le(&ctx->frame[4]));
-                ctx->last_reply_valid = false;
-                parser_reset(ctx);
-                continue;
+    reply(command, status, sequence);
+    if (command == TKBL_CMD_RESET && status == TKBL_OK) {
+        tkbl_platform_reset();
+    }
+}
+
+void tkbl_init(void)
+{
+    frame_length = 0u;
+    expected_length = 0u;
+    last_reply_valid = false;
+    update_state = UPDATE_IDLE;
+}
+
+void tkbl_feed(const uint8_t *data, uint8_t length)
+{
+    uint8_t byte;
+    while (length-- != 0u) {
+        byte = *data++;
+        if (frame_length == 0u) {
+            if (byte == TKBL_SOF0) {
+                frame[frame_length++] = byte;
             }
-            ctx->expected_length = (uint8_t)(12u + payload_length);
-        }
-        if (ctx->expected_length != 0u
-            && ctx->frame_length == ctx->expected_length) {
-            process_frame(ctx);
-            parser_reset(ctx);
+        } else if (frame_length == 1u) {
+            if (byte == TKBL_SOF1) {
+                frame[frame_length++] = byte;
+            } else if (byte != TKBL_SOF0) {
+                frame_length = 0u;
+            }
+        } else {
+            frame[frame_length++] = byte;
+            if (frame_length == 8u) {
+                if (frame[7] != 0u || frame[6] > TKBL_MAX_PAYLOAD) {
+                    reply(frame[3], TKBL_ERR_LENGTH, get_u16(&frame[4]));
+                    last_reply_valid = false;
+                    frame_length = 0u;
+                } else {
+                    expected_length = (uint8_t)(12u + frame[6]);
+                }
+            } else if (expected_length != 0u
+                       && frame_length == expected_length) {
+                process_frame();
+                frame_length = 0u;
+                expected_length = 0u;
+            }
         }
     }
 }

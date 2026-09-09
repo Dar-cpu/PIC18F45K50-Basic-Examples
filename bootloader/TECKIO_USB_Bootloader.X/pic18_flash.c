@@ -8,39 +8,29 @@
 #include "teckio_protocol.h"
 #include "usb.h"
 
-#define INVALID_ROW 0xFFFFFFFFUL
+#define INVALID_ROW 0xFFFFu
 #define META_COMMIT 0x51AA3CC3UL
 
 static uint8_t row_buffer[TKBL_FLASH_ROW_SIZE];
-static uint32_t row_base = INVALID_ROW;
+static uint16_t row_base = INVALID_ROW;
 static bool row_dirty = false;
 
 static const uint8_t metadata_magic[8] = {
     'T', 'K', 'A', 'P', 'P', '0', '1', 0xA5
 };
 
-static void set_table_pointer(uint32_t address)
+static void set_table_pointer(uint16_t address)
 {
-    TBLPTRU = (uint8_t)(address >> 16);
+    TBLPTRU = 0u;
     TBLPTRH = (uint8_t)(address >> 8);
     TBLPTRL = (uint8_t)address;
 }
 
-static uint8_t flash_read_byte(uint32_t address)
+static uint8_t flash_read_byte(uint16_t address)
 {
     set_table_pointer(address);
     __asm("TBLRD*");
     return TABLAT;
-}
-
-static uint32_t read_u32_flash(uint32_t address)
-{
-    uint32_t value;
-    value = flash_read_byte(address);
-    value |= (uint32_t)flash_read_byte(address + 1UL) << 8;
-    value |= (uint32_t)flash_read_byte(address + 2UL) << 16;
-    value |= (uint32_t)flash_read_byte(address + 3UL) << 24;
-    return value;
 }
 
 static void put_u32(uint8_t *p, uint32_t value)
@@ -61,9 +51,9 @@ static void unlock_write(void)
     INTCONbits.GIE = saved_gie;
 }
 
-static bool erase_row(uint32_t address)
+static bool erase_row(uint16_t address)
 {
-    if ((address & (TKBL_FLASH_ROW_SIZE - 1u)) != 0UL
+    if ((address & (TKBL_FLASH_ROW_SIZE - 1u)) != 0u
         || address < TKBL_APP_START || address >= TKBL_FLASH_END) {
         return false;
     }
@@ -80,11 +70,11 @@ static bool erase_row(uint32_t address)
     return flash_read_byte(address) == 0xFFu;
 }
 
-static bool program_row(uint32_t address, const uint8_t *data)
+static bool program_row(uint16_t address, const uint8_t *data)
 {
     uint8_t i;
 
-    if ((address & (TKBL_FLASH_ROW_SIZE - 1u)) != 0UL
+    if ((address & (TKBL_FLASH_ROW_SIZE - 1u)) != 0u
         || address < TKBL_APP_START || address >= TKBL_FLASH_END) {
         return false;
     }
@@ -157,50 +147,27 @@ bool pic18_boot_request_take(void)
 
 bool pic18_application_is_valid(void)
 {
+    static const uint8_t commit_bytes[8] = {
+        0xC3, 0x3C, 0xAA, 0x51, 0x3C, 0xC3, 0x55, 0xAE
+    };
     uint8_t i;
-    uint32_t start;
-    uint32_t end;
-    uint32_t byte_count;
-    uint32_t crc;
-    uint32_t commit;
 
-    for (i = 0; i < sizeof(metadata_magic); ++i) {
-        if (flash_read_byte(TKBL_METADATA_START + i) != metadata_magic[i]) {
+    if (flash_read_byte(TKBL_APP_START) == 0xFFu
+        && flash_read_byte(TKBL_APP_START + 1u) == 0xFFu) {
+        return false;
+    }
+    for (i = 0u; i < sizeof(commit_bytes); ++i) {
+        if (flash_read_byte((uint16_t)(TKBL_METADATA_START + 28u + i))
+            != commit_bytes[i]) {
             return false;
         }
     }
-
-    start = read_u32_flash(TKBL_METADATA_START + 8UL);
-    end = read_u32_flash(TKBL_METADATA_START + 12UL);
-    byte_count = read_u32_flash(TKBL_METADATA_START + 16UL);
-    if (start != TKBL_APP_START || end > TKBL_APP_END || start >= end
-        || byte_count == 0UL || byte_count > (end - start)) {
-        return false;
-    }
-    crc = read_u32_flash(TKBL_METADATA_START + 20UL);
-    if (read_u32_flash(TKBL_METADATA_START + 24UL) != ~crc) {
-        return false;
-    }
-    commit = read_u32_flash(TKBL_METADATA_START + 28UL);
-    if (commit != META_COMMIT
-        || read_u32_flash(TKBL_METADATA_START + 32UL) != ~commit) {
-        return false;
-    }
-
-    /* A valid relocated reset vector cannot be completely erased. */
-    return flash_read_byte(TKBL_APP_START) != 0xFFu
-        || flash_read_byte(TKBL_APP_START + 1UL) != 0xFFu;
+    return true;
 }
 
-uint8_t pic18_flash_begin(uint32_t start, uint32_t end,
-                          uint32_t byte_count, uint32_t image_crc)
+uint8_t tkbl_platform_begin(void)
 {
-    uint32_t address;
-
-    (void)start;
-    (void)end;
-    (void)byte_count;
-    (void)image_crc;
+    uint16_t address;
 
     row_base = INVALID_ROW;
     row_dirty = false;
@@ -218,12 +185,13 @@ uint8_t pic18_flash_begin(uint32_t start, uint32_t end,
     return TKBL_OK;
 }
 
-uint8_t pic18_flash_write(uint32_t address, const uint8_t *data, uint8_t length)
+uint8_t tkbl_platform_write(uint16_t address, const uint8_t *data,
+                            uint8_t length)
 {
     uint8_t i;
 
     for (i = 0; i < length; ++i, ++address) {
-        uint32_t base = address & ~(uint32_t)(TKBL_FLASH_ROW_SIZE - 1u);
+        uint16_t base = address & (uint16_t)~(TKBL_FLASH_ROW_SIZE - 1u);
         uint8_t offset = (uint8_t)(address - base);
 
         if (base < TKBL_APP_START || base >= TKBL_APP_END) {
@@ -250,19 +218,19 @@ uint8_t pic18_flash_write(uint32_t address, const uint8_t *data, uint8_t length)
     return TKBL_OK;
 }
 
-uint8_t pic18_flash_finish(void)
+uint8_t tkbl_platform_finish(void)
 {
     return flush_row();
 }
 
-uint8_t pic18_flash_verify(uint32_t start, uint32_t end,
-                           uint32_t byte_count, uint32_t image_crc)
+uint8_t tkbl_platform_commit(uint16_t start, uint16_t end,
+                             uint16_t byte_count, uint32_t image_crc)
 {
     uint8_t metadata[TKBL_FLASH_ROW_SIZE];
     uint8_t i;
 
     if (start != TKBL_APP_START || end > TKBL_APP_END || start >= end
-        || byte_count == 0UL) {
+        || byte_count == 0u) {
         return TKBL_ERR_ADDRESS;
     }
     if (flash_read_byte(TKBL_APP_START) == 0xFFu
@@ -274,9 +242,9 @@ uint8_t pic18_flash_verify(uint32_t start, uint32_t end,
     for (i = 0; i < sizeof(metadata_magic); ++i) {
         metadata[i] = metadata_magic[i];
     }
-    put_u32(&metadata[8], start);
-    put_u32(&metadata[12], end);
-    put_u32(&metadata[16], byte_count);
+    put_u32(&metadata[8], (uint32_t)start);
+    put_u32(&metadata[12], (uint32_t)end);
+    put_u32(&metadata[16], (uint32_t)byte_count);
     put_u32(&metadata[20], image_crc);
     put_u32(&metadata[24], ~image_crc);
     put_u32(&metadata[28], META_COMMIT);
@@ -288,7 +256,7 @@ uint8_t pic18_flash_verify(uint32_t start, uint32_t end,
     return TKBL_OK;
 }
 
-void pic18_flash_abort(void)
+void tkbl_platform_abort(void)
 {
     row_base = INVALID_ROW;
     row_dirty = false;

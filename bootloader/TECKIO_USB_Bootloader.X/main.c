@@ -67,21 +67,8 @@
 static volatile bool usb_tx_done = true;
 static volatile bool usb_rx_ready = false;
 static volatile bool reset_pending = false;
-static tkbl_context_t protocol;
 
 static void clock_init(void);
-static void usb_send_binary(const uint8_t *data, uint8_t length);
-static void request_reset(void);
-
-static const tkbl_ops_t protocol_ops = {
-    pic18_flash_begin,
-    pic18_flash_write,
-    pic18_flash_finish,
-    pic18_flash_verify,
-    pic18_flash_abort,
-    request_reset,
-    usb_send_binary
-};
 
 /* Forward the fixed PIC18 interrupt vectors to the offset application. */
 void __at(0x0008) teckio_high_vector(void)
@@ -112,7 +99,7 @@ void main(void)
     ANSELE = 0x00;
     /* RE3 is input-only when MCLRE=OFF; it needs no TRIS bit write. */
 
-    tkbl_init(&protocol, &protocol_ops);
+    tkbl_init();
     usb_init();
 
     /* Polling leaves both hardware interrupt vectors available to the application. */
@@ -130,7 +117,7 @@ void main(void)
         if (usb_rx_ready) {
             packet_length = g_cdc_num_data_out;
             usb_rx_ready = false;
-            tkbl_feed(&protocol, g_cdc_dat_ep_out, packet_length);
+            tkbl_feed(g_cdc_dat_ep_out, packet_length);
             cdc_arm_data_ep_out();
         }
 
@@ -169,7 +156,7 @@ void cdc_data_in(void)
 
 void cdc_notification(void) {}
 
-static void usb_send_binary(const uint8_t *data, uint8_t length)
+void tkbl_platform_send(const uint8_t *data, uint8_t length)
 {
     uint8_t i;
 
@@ -183,7 +170,7 @@ static void usb_send_binary(const uint8_t *data, uint8_t length)
     cdc_arm_data_ep_in(length);
 }
 
-static void request_reset(void)
+void tkbl_platform_reset(void)
 {
     reset_pending = true;
 }

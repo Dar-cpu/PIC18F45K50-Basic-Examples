@@ -1,7 +1,6 @@
 #ifndef TECKIO_PROTOCOL_H
 #define TECKIO_PROTOCOL_H
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "bootloader_config.h"
@@ -34,44 +33,18 @@ enum tkbl_status {
     TKBL_ERR_IMAGE_SIZE = 8
 };
 
-typedef struct {
-    uint8_t (*begin)(uint32_t start, uint32_t end, uint32_t byte_count,
-                     uint32_t image_crc);
-    uint8_t (*write)(uint32_t address, const uint8_t *data, uint8_t length);
-    uint8_t (*finish)(void);
-    uint8_t (*verify)(uint32_t start, uint32_t end, uint32_t byte_count,
-                      uint32_t image_crc);
-    void (*abort)(void);
-    void (*request_reset)(void);
-    void (*send)(const uint8_t *data, uint8_t length);
-} tkbl_ops_t;
-
-typedef struct {
-    const tkbl_ops_t *ops;
-    uint8_t frame[TKBL_MAX_FRAME];
-    uint8_t frame_length;
-    uint8_t expected_length;
-
-    uint8_t last_reply[16];
-    uint8_t last_reply_length;
-    uint16_t last_sequence;
-    uint8_t last_command;
-    bool last_reply_valid;
-
-    bool update_started;
-    bool update_ended;
-    bool update_verified;
-    uint32_t start;
-    uint32_t end;
-    uint32_t expected_count;
-    uint32_t expected_crc;
-    uint32_t received_count;
-    uint32_t running_crc;
-    uint32_t next_min_address;
-} tkbl_context_t;
-
-void tkbl_init(tkbl_context_t *ctx, const tkbl_ops_t *ops);
-void tkbl_feed(tkbl_context_t *ctx, const uint8_t *data, uint8_t length);
+void tkbl_init(void);
+void tkbl_feed(const uint8_t *data, uint8_t length);
 uint32_t tkbl_crc32_update(uint32_t crc, const uint8_t *data, uint8_t length);
+
+uint8_t tkbl_platform_begin(void);
+uint8_t tkbl_platform_write(uint16_t address, const uint8_t *data,
+                            uint8_t length);
+uint8_t tkbl_platform_finish(void);
+uint8_t tkbl_platform_commit(uint16_t start, uint16_t end,
+                             uint16_t byte_count, uint32_t image_crc);
+void tkbl_platform_abort(void);
+void tkbl_platform_reset(void);
+void tkbl_platform_send(const uint8_t *data, uint8_t length);
 
 #endif
