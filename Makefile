@@ -12,7 +12,7 @@ USB_ROOT := third_party/USB-Stack/USB_Stack
 USB_CORE := $(USB_ROOT)/USB
 USB_CDC_SHARED := $(USB_ROOT)/Examples/CDC_Examples/Shared_Files
 
-COMMON_FLAGS := -mcpu=$(MCU) -std=c99 -Os -mwarn=-3 -DXPRJ_default=default \
+COMMON_FLAGS := -mcpu=$(MCU) -std=c99 -O2 -mwarn=-3 -DXPRJ_default=default \
 	-I$(USB_CORE) -I$(USB_CDC_SHARED)
 
 ifneq ($(strip $(DFP_DIR)),)

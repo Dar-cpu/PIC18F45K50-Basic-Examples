@@ -48,10 +48,11 @@ jobs:
       - name: Unit tests
         run: make test
 
-      - name: Measure unrestricted bootloader image
-        run: make bootloader BOOT_RESERVE=
+      - name: Build protected bootloader and factory image
+        run: make all
 
-      - name: Upload measurement
+      - name: Upload firmware
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: TECKIO-PIC18F45K50-firmware

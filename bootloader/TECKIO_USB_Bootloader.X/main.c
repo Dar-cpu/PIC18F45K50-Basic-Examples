@@ -71,12 +71,12 @@ static volatile bool reset_pending = false;
 static void clock_init(void);
 
 /* Forward the fixed PIC18 interrupt vectors to the offset application. */
-void __at(0x0008) teckio_high_vector(void)
+void __at(0x0008) __attribute__((used)) teckio_high_vector(void)
 {
     __asm("goto 0x2008");
 }
 
-void __at(0x0018) teckio_low_vector(void)
+void __at(0x0018) __attribute__((used)) teckio_low_vector(void)
 {
     __asm("goto 0x2018");
 }
