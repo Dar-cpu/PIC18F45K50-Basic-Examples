@@ -1,0 +1,4 @@
+[submodule "third_party/USB-Stack"]
+	path = third_party/USB-Stack
+	url = https://github.com/johnnydrazzi/USB-Stack.git
+	branch = master

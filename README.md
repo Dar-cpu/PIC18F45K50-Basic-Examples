@@ -1,33 +1,37 @@
-# PIC18F45K50-Basic-Examples
+# PIC18F45K50 Basic Examples
 
-Repositorio oficial de ejemplos, documentación y proyectos para una tarjeta de desarrollo basada en el **Microchip PIC18F45K50-I/PT** en encapsulado **TQFP-44**.
+Ejemplos y firmware oficial para la tarjeta de desarrollo TECKIO basada en el
+**PIC18F45K50-I/PT TQFP-44**.
 
-La tarjeta se encuentra actualmente en etapa de fabricación. Los ejemplos serán añadidos y validados progresivamente sobre hardware real utilizando principalmente **MPLAB X IDE** y el compilador **XC8**.
+## Bootloader y aplicación TECKIO
 
-## Contenido previsto
+- `bootloader/TECKIO_USB_Bootloader.X`: bootloader USB CDC.
+- `application/Aplicacion_TECKIO.X`: aplicación base enlazada desde `0x2000`.
+- `docs/PICkit_preservacion.md`: configuración para conservar `0x0000-0x1FFF`.
+- `dist/TECKIO_factory.hex`: imagen completa de recuperación, generada y
+  validada por la compilación automática.
 
-El repositorio incluirá ejemplos prácticos para utilizar los principales periféricos del PIC18F45K50, comenzando por funciones básicas y avanzando hacia aplicaciones integradas.
+La aplicación incluida enumera como puerto COM, responde a `1`, acepta
+`SYS.INFO?`, `SYS.STATUS?`, `SYS.RESET` y `BOOT.ENTER`, y ejecuta la prueba de
+GPIO cada 500 ms.
 
-- GPIO y pulsadores
-- Timers e interrupciones
-- ADC
-- UART
-- PWM
-- I²C
-- SPI
-- EEPROM
-- USB CDC / HID
-- Proyectos integrados
+## Compilación
 
-## Hardware
+Requiere MPLAB XC8. Desde la raíz:
 
-- **Microcontrolador:** PIC18F45K50-I/PT
-- **Encapsulado:** TQFP-44
-- **Fabricante:** Microchip Technology
-- **Estado de la tarjeta:** En fabricación
+```sh
+git submodule update --init --recursive
+make all
+```
 
-## Estado del repositorio
+Se generan:
 
-🚧 **Proyecto en desarrollo.**
+- `dist/TECKIO_bootloader.hex`
+- `dist/Aplicacion_TECKIO.hex`
+- `dist/TECKIO_factory.hex`
 
-La documentación, fotografías de la tarjeta, pinout y ejemplos de firmware se añadirán conforme se fabrique y valide el hardware.
+El bootloader utiliza `0x0000-0x1FFF`; las aplicaciones se compilan con
+`-mcodeoffset=0x2000` y reservan `0x7FC0-0x7FFF`.
+
+La pila USB se referencia como submódulo desde `johnnydrazzi/USB-Stack`, fijada
+a una revisión MIT. No se mantiene una copia duplicada dentro del proyecto.
