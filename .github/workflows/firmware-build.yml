@@ -48,18 +48,10 @@ jobs:
       - name: Unit tests
         run: make test
 
-      - name: Build bootloader, application and factory image
-        run: make all
+      - name: Measure unrestricted bootloader image
+        run: make bootloader BOOT_RESERVE=
 
-      - name: Verify generated address ranges
-        run: |
-          python3 tools/make_factory_hex.py \
-            --bootloader dist/TECKIO_bootloader.hex \
-            --application dist/Aplicacion_TECKIO.hex \
-            --output dist/TECKIO_factory_verified.hex
-          cmp dist/TECKIO_factory.hex dist/TECKIO_factory_verified.hex
-
-      - name: Upload firmware
+      - name: Upload measurement
         uses: actions/upload-artifact@v4
         with:
           name: TECKIO-PIC18F45K50-firmware

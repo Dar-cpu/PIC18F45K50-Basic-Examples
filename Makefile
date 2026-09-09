@@ -3,6 +3,7 @@ PYTHON ?= python3
 DFP_DIR ?=
 
 MCU := 18F45K50
+BOOT_RESERVE ?= -mreserve=rom@2000:7fff
 BUILD_DIR := build
 DIST_DIR := dist
 BOOT_DIR := bootloader/TECKIO_USB_Bootloader.X
@@ -45,7 +46,7 @@ $(BUILD_DIR) $(DIST_DIR):
 bootloader: $(DIST_DIR)/TECKIO_bootloader.hex
 
 $(DIST_DIR)/TECKIO_bootloader.hex: $(BOOT_SOURCES) | $(BUILD_DIR) $(DIST_DIR)
-	$(XC8) $(COMMON_FLAGS) -I$(BOOT_DIR) -mreserve=rom@2000:7fff \
+	$(XC8) $(COMMON_FLAGS) -I$(BOOT_DIR) $(BOOT_RESERVE) \
 		-Wl,-Map=$(BUILD_DIR)/TECKIO_bootloader.map \
 		-o $@ $(BOOT_SOURCES)
 
