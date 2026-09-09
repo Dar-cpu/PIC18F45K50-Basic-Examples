@@ -178,6 +178,8 @@ def main() -> None:
     parser.add_argument("--bootloader", type=Path, required=True)
     parser.add_argument("--application", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--icsp-output", type=Path,
+                        help="application + fresh validity row + factory config; no bootloader")
     args = parser.parse_args()
 
     bootloader = parse_hex(args.bootloader)
@@ -185,6 +187,11 @@ def main() -> None:
     factory = build_factory(bootloader, application)
     write_hex(args.output, factory)
     validate_factory(parse_hex(args.output), application)
+    if args.icsp_output:
+        icsp = {address: value for address, value in factory.items() if address >= APP_START}
+        write_hex(args.icsp_output, icsp)
+        if parse_hex(args.icsp_output) != icsp:
+            raise HexError("ICSP output validation failed")
 
     start, end, count, crc = application_payload(application)
     print(

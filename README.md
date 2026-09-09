@@ -28,10 +28,20 @@ Se generan:
 
 - `dist/TECKIO_bootloader.hex`
 - `dist/Aplicacion_TECKIO.hex`
+- `dist/Aplicacion_TECKIO_ICSP.hex` (aplicación, marca válida y configuración; sin bootloader)
 - `dist/TECKIO_factory.hex`
 
 El bootloader utiliza `0x0000-0x1FFF`; las aplicaciones se compilan con
 `-mcodeoffset=0x2000` y reservan `0x7FC0-0x7FFF`.
+
+Usa el HEX puro por USB y el HEX `_ICSP` con PICkit y preservación habilitada.
+La imagen `TECKIO_factory.hex` es exclusivamente para recuperación completa por ICSP.
+No envíes `_ICSP` ni `factory` al cargador USB.
+
+Las carpetas `.X` contienen fuentes; la compilación reproducible usa el Makefile raíz.
+Para crear el proyecto gestionado por MPLAB X, sigue `docs/Aplicacion_MPLAB.md`.
+Los HEX compilados se descargan en Actions → último build satisfactorio → Artifacts;
+no están versionados en Git. Compilación comprobada no equivale a prueba física en placa.
 
 La pila USB se referencia como submódulo desde `johnnydrazzi/USB-Stack`, fijada
 a una revisión MIT. No se mantiene una copia duplicada dentro del proyecto.

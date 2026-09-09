@@ -65,7 +65,7 @@ $(DIST_DIR)/TECKIO_factory.hex: $(DIST_DIR)/TECKIO_bootloader.hex \
 	$(PYTHON) tools/make_factory_hex.py \
 		--bootloader $(DIST_DIR)/TECKIO_bootloader.hex \
 		--application $(DIST_DIR)/Aplicacion_TECKIO.hex \
-		--output $@
+		--output $@ --icsp-output $(DIST_DIR)/Aplicacion_TECKIO_ICSP.hex
 
 test: | $(BUILD_DIR)
 	$(PYTHON) -m unittest discover -s tools/tests -v

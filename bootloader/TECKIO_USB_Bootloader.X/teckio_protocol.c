@@ -128,6 +128,8 @@ static void process_frame(void)
     } else if (command == TKBL_CMD_BEGIN) {
         uint16_t start;
         uint16_t count;
+        /* A rejected new BEGIN must not retain a half-updated session. */
+        update_state = UPDATE_IDLE;
         if (payload_length != 16u) {
             status = TKBL_ERR_LENGTH;
         } else if (!upper_word_is_zero(&payload[0])

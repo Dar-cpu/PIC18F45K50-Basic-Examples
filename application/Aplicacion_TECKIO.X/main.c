@@ -25,7 +25,9 @@
 
 static volatile bool usb_tx_done = true;
 static volatile bool usb_rx_ready = false;
-static bool ready_message_sent = false;
+static char command[64];
+static uint8_t command_length;
+static bool command_overflow;
 static uint8_t blink_ticks = 0;
 static bool pins_on = false;
 
@@ -34,7 +36,8 @@ static void gpio_init(void);
 static void gpio_test_write(bool on);
 static void process_rx(void);
 static void usb_send_text(const char *text);
-static void usb_send_bytes(uint8_t length);
+static bool usb_send_bytes(uint8_t length);
+static void execute_command(void);
 
 static void __interrupt() isr(void)
 {
@@ -57,12 +60,10 @@ void main(void)
 
     while (1) {
         if (usb_get_state() < STATE_CONFIGURED) {
-            ready_message_sent = false;
+            command_length = 0;
+            command_overflow = false;
+            usb_tx_done = true;
         } else {
-            if (!ready_message_sent) {
-                usb_send_text("TECKIO USB READY\r\n");
-                ready_message_sent = true;
-            }
             if (usb_rx_ready) {
                 process_rx();
             }
@@ -149,20 +150,35 @@ void cdc_notification(void) {}
 
 static void process_rx(void)
 {
-    char command[CDC_DAT_EP_SIZE + 1u];
     uint8_t count = g_cdc_num_data_out;
     uint8_t i;
-
     usb_rx_ready = false;
     for (i = 0; i < count; ++i) {
-        command[i] = (char)g_cdc_dat_ep_out[i];
+        char ch = (char)g_cdc_dat_ep_out[i];
+        if (ch == '\r' || ch == '\n') {
+            if (command_overflow) usb_send_text("ERR LENGTH comando_largo\r\n");
+            else if (command_length) {
+                command[command_length] = '\0';
+                execute_command();
+            }
+            command_length = 0;
+            command_overflow = false;
+        } else if (!command_overflow) {
+            if (command_length < sizeof(command) - 1u) command[command_length++] = ch;
+            else command_overflow = true;
+        }
     }
-    while (count > 0u
-           && (command[count - 1u] == '\r' || command[count - 1u] == '\n')) {
-        --count;
+    /* Preserve the original one-byte USB test without a line terminator. */
+    if (command_length == 1u && command[0] == '1' && !command_overflow) {
+        command[1] = '\0';
+        execute_command();
+        command_length = 0;
     }
-    command[count] = '\0';
+    cdc_arm_data_ep_out();
+}
 
+static void execute_command(void)
+{
     if (strcmp(command, "1") == 0) {
         usb_send_text("TECKIO USB OK\r\n");
     } else if (strcmp(command, "SYS.INFO?") == 0) {
@@ -181,17 +197,17 @@ static void process_rx(void)
         usb_send_text("ERR UNKNOWN comando_no_reconocido\r\n");
     }
 
-    cdc_arm_data_ep_out();
 }
 
 static void usb_send_text(const char *text)
 {
     uint8_t length = 0;
+    if (!usb_tx_done || usb_get_state() < STATE_CONFIGURED) return;
 
     while (*text != '\0') {
         g_cdc_dat_ep_in[length++] = (uint8_t)*text++;
         if (length == CDC_DAT_EP_SIZE) {
-            usb_send_bytes(length);
+            if (!usb_send_bytes(length)) return;
             length = 0;
         }
     }
@@ -200,9 +216,11 @@ static void usb_send_text(const char *text)
     }
 }
 
-static void usb_send_bytes(uint8_t length)
+static bool usb_send_bytes(uint8_t length)
 {
+    uint8_t timeout = 250u;
     usb_tx_done = false;
     cdc_arm_data_ep_in(length);
-    while (!usb_tx_done) {}
+    while (!usb_tx_done && usb_get_state() >= STATE_CONFIGURED && timeout--) __delay_ms(1);
+    return usb_tx_done;
 }
