@@ -1,56 +1,52 @@
 # PIC18F45K50 Basic Examples
 
-Ejemplos y firmware oficial para la tarjeta de desarrollo TECKIO basada en el
-**PIC18F45K50-I/PT TQFP-44**.
+Colección de ejemplos prácticos en C para la tarjeta de desarrollo **TECKIO PIC18F45K50**, usando **MPLAB X IDE** y **XC8**.
 
-## Bootloader y aplicación TECKIO
+Este repositorio contiene únicamente ejemplos de usuario. El bootloader, las aplicaciones de producción, herramientas de generación y archivos de compilación no forman parte de este repositorio.
 
-- `bootloader/TECKIO_USB_Bootloader.X`: bootloader USB CDC.
-- `application/Aplicacion_TECKIO.X`: aplicación base enlazada desde `0x2000`.
-- `docs/PICkit_preservacion.md`: configuración para conservar `0x0000-0x1FFF`.
-- `dist/TECKIO_factory.hex`: imagen completa de recuperación, generada y
-  validada por la compilación automática.
+## Tarjeta de desarrollo
 
-La aplicación incluida enumera como puerto COM, responde a `1`, acepta
-`SYS.INFO?`, `SYS.STATUS?`, `SYS.RESET` y `BOOT.ENTER`, y ejecuta la prueba de
-GPIO cada 500 ms.
+<p align="center">
+  <img src="Images/teckio_pic18f45k50_dev.jpeg" alt="Tarjeta de desarrollo TECKIO PIC18F45K50" width="680">
+</p>
 
-## Compilación
+## Organización
 
-Requiere MPLAB XC8. Desde la raíz:
+| Carpeta | Contenido |
+| --- | --- |
+| [`PIC18F45K50/`](PIC18F45K50) | Ejemplos para el PIC18F45K50 |
+| [`Images/`](Images) | Imagen general de la tarjeta |
 
-```sh
-git submodule update --init --recursive
-make all
+## Ejemplos disponibles
+
+| Categoría | Ejemplo |
+| --- | --- |
+| GPIO | [Prueba general de GPIO](PIC18F45K50/gpio/all-gpio-test) |
+
+Se añadirán nuevos ejemplos de ADC, timers, PWM, UART, I²C, SPI y USB conforme sean compilados y verificados en hardware.
+
+## Cómo usar los ejemplos
+
+1. Crea un **Standalone Project** en MPLAB X.
+2. Selecciona **PIC18F45K50** y el compilador **XC8**.
+3. Si vas a programar mediante el bootloader TECKIO, usa el template/configuración de proyecto que inicia la aplicación en `0x2000` para no sobrescribir el bootloader.
+4. Copia el `main.c` del ejemplo deseado.
+5. Compila y carga el `.hex` generado.
+
+## Estructura
+
+```text
+PIC18F45K50-Basic-Examples/
+├── Images/
+├── PIC18F45K50/
+│   └── gpio/
+│       └── all-gpio-test/
+│           ├── README.md
+│           └── main.c
+├── LICENSE
+└── README.md
 ```
 
-Se generan:
+## Licencia
 
-- `dist/TECKIO_bootloader.hex`
-- `dist/Aplicacion_TECKIO.hex`
-- `dist/Aplicacion_TECKIO_ICSP.hex` (aplicación, marca válida y configuración; sin bootloader)
-- `dist/Aplicacion_TECKIO_UpdateTest.hex` (prueba USB: respuesta V2 y parpadeo de 200 ms)
-- `dist/TECKIO_factory.hex`
-
-El bootloader utiliza `0x0000-0x1FFF`; las aplicaciones se compilan con
-`-mcodeoffset=0x2000` y reservan `0x7FC0-0x7FFF`.
-
-Usa el HEX puro por USB y el HEX `_ICSP` con PICkit y preservación habilitada.
-La imagen `TECKIO_factory.hex` es exclusivamente para recuperación completa por ICSP.
-No envíes `_ICSP` ni `factory` al cargador USB.
-
-Las carpetas `.X` contienen fuentes; la compilación reproducible usa el Makefile raíz.
-Para crear el proyecto gestionado por MPLAB X, sigue `docs/Aplicacion_MPLAB.md`.
-Los HEX compilados se descargan en Actions → último build satisfactorio → Artifacts;
-no están versionados en Git. Compilación comprobada no equivale a prueba física en placa.
-
-La pila USB se referencia como submódulo desde `johnnydrazzi/USB-Stack`, fijada
-a una revisión MIT. No se mantiene una copia duplicada dentro del proyecto.
-
-
-## Prueba visible de actualización USB
-
-Carga `Aplicacion_TECKIO_UpdateTest.hex` exclusivamente mediante el bootloader USB.
-Tras VERIFY y RESET, la placa conmuta los GPIO cada 200 ms. El comando `1` responde
-`TECKIO APP V2 OK`; `SYS.INFO?` informa `app=update-test version=2.0.0`.
-Esto distingue la imagen descargada del programa de fábrica, que usa 500 ms.
+Código distribuido bajo la [licencia MIT](LICENSE).
