@@ -1,0 +1,4 @@
+[submodule "TECKIO-Bootloader/legacy-source/third_party/USB-Stack"]
+	path = TECKIO-Bootloader/legacy-source/third_party/USB-Stack
+	url = https://github.com/johnnydrazzi/USB-Stack.git
+	branch = master

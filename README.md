@@ -2,7 +2,7 @@
 
 Colección de ejemplos prácticos en C para la tarjeta de desarrollo **TECKIO PIC18F45K50**, usando **MPLAB X IDE** y **XC8**.
 
-Este repositorio contiene únicamente ejemplos de usuario. El bootloader, las aplicaciones de producción, herramientas de generación y archivos de compilación no forman parte de este repositorio.
+Los ejemplos de usuario se mantienen separados del firmware interno de la tarjeta. El bootloader USB y sus fuentes de recuperación están en una carpeta independiente para no mezclarlo con los ejemplos.
 
 ## Tarjeta de desarrollo
 
@@ -15,6 +15,7 @@ Este repositorio contiene únicamente ejemplos de usuario. El bootloader, las ap
 | Carpeta | Contenido |
 | --- | --- |
 | [`PIC18F45K50/`](PIC18F45K50) | Ejemplos para el PIC18F45K50 |
+| [`TECKIO-Bootloader/`](TECKIO-Bootloader) | Bootloader USB, fuentes anteriores y recuperación |
 | [`Images/`](Images) | Imagen general de la tarjeta |
 
 ## Ejemplos disponibles
@@ -28,8 +29,8 @@ Se añadirán nuevos ejemplos de ADC, timers, PWM, UART, I²C, SPI y USB conform
 ## Cómo usar los ejemplos
 
 1. Crea un **Standalone Project** en MPLAB X.
-2. Selecciona **PIC18F45K50** y el compilador **XC8**.
-3. Si vas a programar mediante el bootloader TECKIO, usa el template/configuración de proyecto que inicia la aplicación en `0x2000` para no sobrescribir el bootloader.
+2. Selecciona **PIC18F45K50** y **XC8**.
+3. Si programas mediante el bootloader TECKIO, configura la aplicación para iniciar desde `0x2000` y no sobrescribir `0x0000-0x1FFF`.
 4. Copia el `main.c` del ejemplo deseado.
 5. Compila y carga el `.hex` generado.
 
@@ -41,12 +42,13 @@ PIC18F45K50-Basic-Examples/
 ├── PIC18F45K50/
 │   └── gpio/
 │       └── all-gpio-test/
-│           ├── README.md
-│           └── main.c
+├── TECKIO-Bootloader/
+│   ├── legacy-source/
+│   └── recovery/
 ├── LICENSE
 └── README.md
 ```
 
 ## Licencia
 
-Código distribuido bajo la [licencia MIT](LICENSE).
+Código distribuido bajo la [licencia MIT](LICENSE). Las dependencias de terceros conservan sus avisos y licencias correspondientes.
