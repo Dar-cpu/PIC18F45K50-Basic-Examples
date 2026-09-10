@@ -15,3 +15,17 @@ internas accidentales.
 
 La compilación usa la pila CDC incluida como submódulo en
 `third_party/USB-Stack`.
+
+## Entrada al bootloader
+
+Con una aplicación válida, el encendido y los reinicios por software arrancan
+directamente desde `0x2000`. Para cargar otro HEX no hace falta implementar ni
+enviar `BOOT.ENTER`:
+
+1. Pulsa el botón físico **RESET** de la tarjeta.
+2. Durante 30 segundos, conecta la app Windows o Android y pulsa programar.
+3. El primer `HELLO` mantiene el bootloader activo hasta terminar.
+4. Después de `VERIFY` y `RESET`, la aplicación nueva arranca inmediatamente.
+
+Si no existe una aplicación válida, el bootloader permanece activo sin límite.
+`MCLRE=ON` mantiene operativo el botón RESET.

@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 #define _XTAL_FREQ 48000000UL
-#define TKBL_ENTRY_WINDOW_MS 5000u
+#define TKBL_ENTRY_WINDOW_MS 30000u
 
 #include "config.h"
 #include "pic18_flash.h"
@@ -32,7 +32,7 @@
 #pragma config WDTPS    = 32768
 
 /* RE3 is a digital input. Programming/debug stays on pins 12, 13 and 33. */
-#pragma config MCLRE    = OFF
+#pragma config MCLRE    = ON
 #pragma config PBADEN   = OFF
 #pragma config CCP2MX   = RC1
 #pragma config T3CMX    = RC0
@@ -71,6 +71,7 @@ static volatile bool reset_pending = false;
 static bool boot_session_active = false;
 
 static void clock_init(void);
+static bool reset_button_requested_bootloader(void);
 static void usb_boot_service(void);
 
 /* Forward the fixed PIC18 interrupt vectors to the offset application. */
@@ -90,12 +91,25 @@ void main(void)
 {
     bool force_boot;
     bool app_valid;
+    bool reset_button_boot;
     uint16_t elapsed_ms;
+
+    /*
+     * Read and normalize RCON before the application changes its flags.
+     * A RESET instruction (used after programming) must start the application
+     * immediately. Only the external MCLR/RESET button opens the recovery
+     * window when a valid application is already installed.
+     */
+    reset_button_boot = reset_button_requested_bootloader();
 
     clock_init();
 
     force_boot = pic18_boot_request_take();
     app_valid = pic18_application_is_valid();
+
+    if (!force_boot && app_valid && !reset_button_boot) {
+        pic18_jump_to_application();
+    }
 
     ANSELA = 0x00;
     ANSELB = 0x00;
@@ -116,13 +130,13 @@ void main(void)
      * Recovery window:
      * - If EEPROM requested the loader, stay here permanently.
      * - If no valid application exists, stay here permanently.
-     * - Otherwise expose the CDC bootloader for 5 seconds after every reset.
-     *   If the PC sends any bootloader packet (normally HELLO), remain in the
-     *   loader. If there is no traffic, close USB and start the application.
-     *
-     * This makes even applications with no USB code recoverable over USB-C.
+     * - With a valid application, the physical RESET button exposes the CDC
+     *   bootloader for 30 seconds. HELLO from either TECKIO app latches the
+     *   session; no BOOT.ENTER command is required in the application.
+     * - Power-on, brown-out, watchdog and RESET-instruction restarts launch a
+     *   valid application immediately, so normal startup is not delayed.
      */
-    if (!force_boot && app_valid) {
+    if (!force_boot && app_valid && reset_button_boot) {
         for (elapsed_ms = 0u;
              elapsed_ms < TKBL_ENTRY_WINDOW_MS && !boot_session_active;
              ++elapsed_ms) {
@@ -164,6 +178,28 @@ static void usb_boot_service(void)
         tkbl_feed(g_cdc_dat_ep_out, packet_length);
         cdc_arm_data_ep_out();
     }
+}
+
+static bool reset_button_requested_bootloader(void)
+{
+    bool power_on_reset = RCONbits.POR == 0;
+    bool brown_out_reset = !power_on_reset && RCONbits.BOR == 0;
+    bool software_reset = RCONbits.RI == 0;
+    bool watchdog_reset = RCONbits.TO == 0;
+    bool reset_button = !power_on_reset && !brown_out_reset
+                     && !software_reset && !watchdog_reset;
+
+    /*
+     * The data sheet requires software to set these flags after reading them,
+     * otherwise a later MCLR reset cannot be distinguished reliably.
+     */
+    RCONbits.RI = 1;
+    RCONbits.TO = 1;
+    RCONbits.PD = 1;
+    RCONbits.POR = 1;
+    RCONbits.BOR = 1;
+
+    return reset_button;
 }
 
 static void clock_init(void)
