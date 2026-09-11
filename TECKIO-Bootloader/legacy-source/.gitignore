@@ -1,9 +1,0 @@
-build/
-dist/*
-!dist/.gitkeep
-nbproject/private/
-__pycache__/
-*.elf
-*.p1
-*.s
-*.lst
