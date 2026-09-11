@@ -1,22 +1,16 @@
 # PIC18F45K50 Basic Examples
 
-Colección de ejemplos prácticos en C para la tarjeta de desarrollo **TECKIO PIC18F45K50**, usando **MPLAB X IDE** y **XC8**.
+Colección de ejemplos prácticos en **C** para el microcontrolador **Microchip PIC18F45K50-I/PT** y la tarjeta de desarrollo **TECKIO PIC18F45K50**, usando **MPLAB X IDE** y **XC8**.
 
-Los ejemplos de usuario se mantienen separados del firmware interno de la tarjeta. El bootloader USB y sus fuentes de recuperación están en una carpeta independiente para no mezclarlo con los ejemplos.
+El repositorio está enfocado en ejemplos simples, independientes y fáciles de reutilizar. El bootloader de la tarjeta se mantiene separado de los ejemplos y su carpeta queda reservada para publicar posteriormente el `.hex` de recuperación.
 
-## Tarjeta de desarrollo
-
-<p align="center">
-  <img src="Images/teckio_pic18f45k50_dev.jpeg" alt="Tarjeta de desarrollo TECKIO PIC18F45K50" width="680">
-</p>
-
-## Organización
+## Organización principal
 
 | Carpeta | Contenido |
 | --- | --- |
-| [`PIC18F45K50/`](PIC18F45K50) | Ejemplos para el PIC18F45K50 |
-| [`TECKIO-Bootloader/`](TECKIO-Bootloader) | Bootloader USB, fuentes anteriores y recuperación |
-| [`Images/`](Images) | Imagen general de la tarjeta |
+| [`PIC18F45K50/`](PIC18F45K50) | Ejemplos básicos organizados por periférico |
+| [`TECKIO-Bootloader/`](TECKIO-Bootloader) | Carpeta reservada para el `.hex` final del bootloader/firmware de recuperación |
+| [`Images/`](Images) | Fotografías generales de la tarjeta |
 
 ## Ejemplos disponibles
 
@@ -24,17 +18,29 @@ Los ejemplos de usuario se mantienen separados del firmware interno de la tarjet
 | --- | --- |
 | GPIO | [Prueba general de GPIO](PIC18F45K50/gpio/all-gpio-test) |
 
-Se añadirán nuevos ejemplos de ADC, timers, PWM, UART, I²C, SPI y USB conforme sean compilados y verificados en hardware.
+Se añadirán ejemplos de **ADC, Timer, PWM, UART, I²C, SPI y USB** conforme sean compilados y verificados en hardware.
 
 ## Cómo usar los ejemplos
 
 1. Crea un **Standalone Project** en MPLAB X.
-2. Selecciona **PIC18F45K50** y **XC8**.
-3. Si programas mediante el bootloader TECKIO, configura la aplicación para iniciar desde `0x2000` y no sobrescribir `0x0000-0x1FFF`.
+2. Selecciona **PIC18F45K50**.
+3. Selecciona el compilador **XC8**.
 4. Copia el `main.c` del ejemplo deseado.
-5. Compila y carga el `.hex` generado.
+5. Compila el proyecto y programa la tarjeta.
 
-## Estructura
+### Si utilizas el bootloader TECKIO
+
+La aplicación debe comenzar desde `0x2000` para no sobrescribir el bootloader ubicado en `0x0000-0x1FFF`.
+
+Puedes usar el template/configuración de MPLAB X preparado para aplicaciones TECKIO antes de generar el `.hex` que cargarás mediante USB.
+
+## Bootloader
+
+La carpeta [`TECKIO-Bootloader/`](TECKIO-Bootloader) **no contiene ejemplos de usuario**.
+
+Se mantiene únicamente para publicar posteriormente el `.hex` final necesario para recuperar una tarjeta mediante PICkit en caso de que el bootloader sea sobrescrito o necesite restaurarse.
+
+## Estructura resumida
 
 ```text
 PIC18F45K50-Basic-Examples/
@@ -43,12 +49,15 @@ PIC18F45K50-Basic-Examples/
 │   └── gpio/
 │       └── all-gpio-test/
 ├── TECKIO-Bootloader/
-│   ├── legacy-source/
-│   └── recovery/
+│   └── README.md
 ├── LICENSE
 └── README.md
 ```
 
+## Estado del repositorio
+
+Los ejemplos se incorporan después de ser compilados y verificados físicamente en la tarjeta TECKIO PIC18F45K50.
+
 ## Licencia
 
-Código distribuido bajo la [licencia MIT](LICENSE). Las dependencias de terceros conservan sus avisos y licencias correspondientes.
+El código se distribuye bajo la [licencia MIT](LICENSE).
